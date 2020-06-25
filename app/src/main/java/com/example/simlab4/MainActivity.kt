@@ -9,10 +9,8 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import kotlinx.android.synthetic.main.activity_main.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
 
 class MainActivity : AppCompatActivity() {
 
@@ -21,36 +19,42 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
         val chart = findViewById<LineChart>(R.id.chart1)
         val entries = ArrayList<Entry>()
-        var num=1f
-        var stop=false
+        var numberOfNextEntry=1f
+        var updateThreadCoroutine:Job?=null
         textView.text=MoneyBag.rub.toString()+"\u20BD  "+MoneyBag.dollar.toString()+"$"
         buttonGenerate.setOnClickListener {
-            stop=true
-            var laststep=System.currentTimeMillis()
-            var rem=editTextSAmount.text.toString().toInt()
-            entries.clear()
-            while (rem>0)
+            ExchangeRateProvider.volat=("0"+volText.text.toString()).toDouble()
+            ExchangeRateProvider.cut=("0"+cutText.text.toString()).toDouble()
+            if (updateThreadCoroutine!=null)
             {
-                entries.add(Entry(num,ExchangeRateProvider.currentCost.toFloat()))
-                ExchangeRateProvider.updateRate()
-                rem--
-                num++
+                updateThreadCoroutine?.cancel()
+                updateThreadCoroutine=null
             }
-            stop=false
-            GlobalScope.launch {
+            var laststep=System.currentTimeMillis()
+            var remainingEntriesToAdd=editTextSAmount.text.toString().toInt()
+            entries.clear()
+            while (remainingEntriesToAdd>0)
+            {
+                entries.add(Entry(numberOfNextEntry,ExchangeRateProvider.currentCost.toFloat()))
+                ExchangeRateProvider.updateRate()
+                remainingEntriesToAdd--
+                numberOfNextEntry++
+            }
+            updateThreadCoroutine=GlobalScope.launch {
                 withContext(Dispatchers.Default)
                 {
-                    while (!stop) {
+                    while (true) {
                         if ((System.currentTimeMillis()-laststep)>1000) {
-                            stop=true
+                            var mtx=Mutex()
+                            mtx.lock(this)
                             laststep=System.currentTimeMillis()
                             ExchangeRateProvider.updateRate()
-                            entries.add(Entry(num,ExchangeRateProvider.currentCost.toFloat()))
+                            entries.add(Entry(numberOfNextEntry,ExchangeRateProvider.currentCost.toFloat()))
                             if (entries.size>40)
                             {
                                 entries.removeAt(0)
                             }
-                            num++
+                            numberOfNextEntry++
                             val dataSet = LineDataSet(entries, "Курс"); // add entries to dataset
                             dataSet.color = Color.GREEN;
                             dataSet.valueTextColor = Color.BLACK
@@ -63,7 +67,8 @@ class MainActivity : AppCompatActivity() {
                                     chart.invalidate()
                                 }
                             }
-                            stop=false
+                            Thread.sleep(1000)
+                            mtx.unlock()
                         }
                     }
                 }

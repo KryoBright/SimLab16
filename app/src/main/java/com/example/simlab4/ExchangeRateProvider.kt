@@ -1,5 +1,6 @@
 package com.example.simlab4
 
+import java.lang.Math.exp
 import java.util.*
 import kotlin.math.atan
 
@@ -7,24 +8,26 @@ class ExchangeRateProvider {
     companion object{
         private val rnd=Random()
         var defCost=130
-        var currentCost= rnd.nextDouble()* defCost
-        private var sold=0f
+        var currentCost= rnd.nextGaussian()* defCost
+        var t=0
+        var last_W=0.0
+        var volat=1.0
+        var cut=2.0
 
         fun updateRate()
         {
-            currentCost = currentCost*(1  - atan(sold + 0.0) * 0.002 / Math.PI)+ defCost*(rnd.nextDouble() * 0.02-0.01)
-            sold /= 2
+            currentCost = defCost* kotlin.math.exp((volat - cut * cut / 2.0) * t + volat * last_W)
+            last_W += rnd.nextGaussian()
+            t++
         }
 
         fun sell(amount:Float):Float
         {
-            sold+=amount
             return currentCost.toFloat()*amount
         }
 
         fun buy(amount:Float):Float
         {
-            sold-=amount
             return currentCost.toFloat()*amount
         }
     }
